@@ -30,7 +30,7 @@ class FoodView(discord.ui.View):
             color=discord.Color.blue()
         )
         embed.set_image(url=url)
-        embed.set_footer(text="Bon appétit again!")
+        embed.set_footer(text="Bon appétit yet again!")
         await interaction.response.edit_message(embed=embed, view=FoodView(self.category))
 
 class FoodBot(commands.Bot):
