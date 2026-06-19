@@ -1,3 +1,5 @@
+# foodbot.py
+
 from cmath import e
 import discord
 import os
@@ -7,7 +9,23 @@ import sqlite3
 from discord.ext import commands
 from discord import app_commands
 from dotenv import load_dotenv
+from flask import Flask
+from threading import Thread
 
+# --- Keep-alive server for Replit ---
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "FoodBot is running!"
+
+def run():
+    app.run(host='0.0.0.0', port=8080)
+
+Thread(target=run).start()
+# ------------------------------------
+
+# Database setup
 conn = sqlite3.connect("foodbot.db")
 cursor = conn.cursor()
 
@@ -22,20 +40,15 @@ load_dotenv()
 intents = discord.Intents.default()
 intents.message_content = True
 
-
 logging.basicConfig(level=logging.INFO)
-
 
 class FoodView(discord.ui.View):
     def __init__(self, category: str):
-        super().__init__(timeout=None)  # persistent view
+        super().__init__(timeout=None)
         self.category = category
 
     @discord.ui.button(label="Another!", style=discord.ButtonStyle.primary, emoji="🍽️")
-    async def another(
-        self, interaction: discord.Interaction, button: discord.ui.Button
-    ):
-        # Serve another random image/fact from the same category
+    async def another(self, interaction: discord.Interaction, button: discord.ui.Button):
         url = random.choice(FOOD_IMAGES[self.category])
         fact = random.choice(FUN_FACTS[self.category])
         embed = discord.Embed(
@@ -45,10 +58,7 @@ class FoodView(discord.ui.View):
         )
         embed.set_image(url=url)
         embed.set_footer(text="Bon appétit yet again!")
-        await interaction.response.edit_message(
-            embed=embed, view=FoodView(self.category)
-        )
-
+        await interaction.response.edit_message(embed=embed, view=FoodView(self.category))
 
 class FoodBot(commands.Bot):
     async def setup_hook(self):
@@ -64,16 +74,14 @@ class FoodBot(commands.Bot):
             if priority_guild_id:
                 guild = discord.Object(id=int(priority_guild_id))
                 await self.tree.sync(guild=guild)
-                logging.info(
-                    f"🏠 Synced commands to priority guild {priority_guild_id} (PROD_MODE)"
-                )
+                logging.info(f"🏠 Synced commands to priority guild {priority_guild_id} (PROD_MODE)")
             else:
                 await self.tree.sync()
                 logging.info("🌍 Synced commands globally (PROD_MODE)")
 
-
 bot = FoodBot(command_prefix="!", intents=intents)
 
+# --- Food images and facts dictionaries ---
 FOOD_IMAGES = {
     "burger": [
         "https://cdn.discordapp.com/attachments/1517278740290212031/1517279900506128555/Z.png",
@@ -127,7 +135,7 @@ FUN_FACTS = {
         "The world’s most expensive sushi roll costs over $1,900!",
     ],
 }
-
+# -----------------------------------------
 
 # /food command
 @bot.tree.command(name="food", description="Sends a random image of the chosen food")
@@ -158,31 +166,22 @@ async def food(interaction: discord.Interaction, item: app_commands.Choice[str])
         conn.commit()
 
     except Exception as e:
-        await interaction.response.send_message(
-            f"⚠️ Something went wrong serving {item.name}. Error: {e}"
-        )
+        await interaction.response.send_message(f"⚠️ Something went wrong serving {item.name}. Error: {e}")
 
-
+# /topfoods command
 @bot.tree.command(name="topfoods", description="Shows the top 3 most requested foods")
 async def topfoods(interaction: discord.Interaction):
     cursor.execute("SELECT category, count FROM food_stats ORDER BY count DESC LIMIT 3")
     results = cursor.fetchall()
-
     if results:
         description = "\n".join([f"🍴 {cat}: {cnt} requests" for cat, cnt in results])
-        embed = discord.Embed(
-            title="Top 3 Most Requested Foods",
-            description=description,
-            color=discord.Color.gold(),
-        )
+        embed = discord.Embed(title="Top 3 Most Requested Foods", description=description, color=discord.Color.gold())
         await interaction.response.send_message(embed=embed)
     else:
         await interaction.response.send_message("No food requests yet!")
- 
+
 # /randomfood command
-@bot.tree.command(
-    name="randomfood", description="Sends a random food image and fun fact"
-)
+@bot.tree.command(name="randomfood", description="Sends a random food image and fun fact")
 async def randomfood(interaction: discord.Interaction):
     try:
         category = random.choice(list(FOOD_IMAGES.keys()))
@@ -196,9 +195,12 @@ async def randomfood(interaction: discord.Interaction):
         embed.set_image(url=url)
         embed.set_footer(text="Bon appétit!")
         await interaction.response.send_message(embed=embed)
+
+        increment_food(category)
+        conn.commit()
+
     except Exception as e:
         await interaction.response.send_message(f"⚠️ Error serving random food: {e}")
-
 
 # /foodfact command
 @bot.tree.command(name="foodfact", description="Get a random fun fact about food")
@@ -207,19 +209,17 @@ async def foodfact(interaction: discord.Interaction):
         category = random.choice(list(FUN_FACTS.keys()))
         fact = random.choice(FUN_FACTS[category])
         await interaction.response.send_message(f"🍴 Fun fact about {category}: {fact}")
+
+        increment_food(category)
+        conn.commit()
+
     except Exception as e:
         await interaction.response.send_message(f"⚠️ Error serving food fact: {e}")
 
-
-# helper function to track requests
+# Helper function
 def increment_food(category: str):
-    cursor.execute(
-        "INSERT OR IGNORE INTO food_stats (category, count)VALUES (?, 0)", (category,)
-    )
-    cursor.execute(
-        "UPDATE food_stats SET count = count + 1 WHERE category = ?", (category,)
-    )
-
+    cursor.execute("INSERT OR IGNORE INTO food_stats (category, count) VALUES (?, 0)", (category,))
+    cursor.execute("UPDATE food_stats SET count = count + 1 WHERE category = ?", (category,))
 
 # Run the bot
 token = os.getenv("DISCORD_TOKEN")
@@ -227,5 +227,3 @@ if not token:
     raise RuntimeError("DISCORD_TOKEN environment variable not set")
 bot.run(token)
 conn.close()
-
-# python C:\Users\onehu\foodbot\foodbot.py -- use if you want to run the bot locally
