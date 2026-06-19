@@ -19,7 +19,17 @@ class FoodView(discord.ui.View):
         super().__init__(timeout=None) # persistent view
         self.category = category
     @discord.ui.button(label="Another!", style=discord.ButtonStyle.primary, emoji="🍽️")
-
+    async def another(self, interaction: discord.Interaction, button: discord.ui.Button):
+        url = random.choice(FOOD_IMAGES[self.category])
+        fact = random.choice(FUN_FACTS[self.category])
+        embed = discord.Embed(
+            title=f"Here's another {self.category} 🍽️",
+            description=f"Fun fact: {fact}",
+            color=discord.Color.blue()
+        )
+        embed.set_image(url=url)
+        embed.set_footer(text="Bon appétit!")
+        await interaction.response.send_message(embed=embed)
 
 class FoodBot(commands.Bot):
     async def setup_hook(self):
