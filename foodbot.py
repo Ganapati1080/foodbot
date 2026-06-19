@@ -1,16 +1,6 @@
+# foodbot.py (patched)
 import functools
-from typing import Any, Callable
-
-def track_food_requests(func: Callable) -> Callable:
-    import functools
-    @functools.wraps(func)
-    async def wrapper(*args: Any, **kwargs: Any) -> Any:
-        try:
-            return await func(*args, **kwargs)
-        finally:
-            pass
-    return wrapper
-
+from typing import Any, Callable, List, Tuple, Optional
 import os
 import random
 import logging
@@ -18,7 +8,7 @@ import sqlite3
 import atexit
 import datetime
 import threading
-from typing import List, Tuple, Optional
+from urllib.parse import urlparse
 
 import discord
 from discord.ext import commands
@@ -114,13 +104,20 @@ class DB:
             self.conn.commit()
 
     def remove_food(self, category: str) -> bool:
+        """
+        Return True if the category existed and was removed, False otherwise.
+        """
         with self.lock:
             cur = self.conn.cursor()
+            cur.execute("SELECT 1 FROM food_data WHERE category = ?", (category,))
+            exists = cur.fetchone() is not None
+            if not exists:
+                return False
             cur.execute("DELETE FROM food_data WHERE category = ?", (category,))
             cur.execute("DELETE FROM food_stats WHERE category = ?", (category,))
             cur.execute("DELETE FROM user_food_stats WHERE category = ?", (category,))
             self.conn.commit()
-            return cur.rowcount > 0
+            return True
 
     def increment_user_food(self, user_id: str, category: str):
         with self.lock:
@@ -173,10 +170,10 @@ atexit.register(db.close)
 
 # --- Default data ---
 DEFAULT_FOOD = {
-    "burger": {"images": ["https://..."], "facts": ["Burgers became popular in the U.S. in the early 1900s."]},
-    "pizza": {"images": ["https://..."], "facts": ["Pizza originated in Naples, Italy, as a street food."]},
-    "taco": {"images": ["https://..."], "facts": ["Tacos date back to the 18th century in Mexico."]},
-    "sushi": {"images": ["https://..."], "facts": ["Sushi began as a way to preserve fish in fermented rice."]}
+    "burger": {"images": ["https://example.com/burger.jpg"], "facts": ["Burgers became popular in the U.S. in the early 1900s."]},
+    "pizza": {"images": ["https://example.com/pizza.jpg"], "facts": ["Pizza originated in Naples, Italy, as a street food."]},
+    "taco": {"images": ["https://example.com/taco.jpg"], "facts": ["Tacos date back to the 18th century in Mexico."]},
+    "sushi": {"images": ["https://example.com/sushi.jpg"], "facts": ["Sushi began as a way to preserve fish in fermented rice."]}
 }
 if not db.list_categories():
     for cat, data in DEFAULT_FOOD.items():
@@ -187,6 +184,34 @@ if not db.list_categories():
 intents = discord.Intents.default()
 intents.message_content = True
 
+# --- Helpers ---
+def looks_like_image_url(url: str) -> bool:
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return False
+    if parsed.scheme not in ("http", "https"):
+        return False
+    path = parsed.path.lower()
+    return any(path.endswith(ext) for ext in (".png", ".jpg", ".jpeg", ".gif", ".webp"))
+
+def choose_image_url(images: List[str]) -> Optional[str]:
+    # Prefer valid-looking image URLs; fall back to any URL if none look valid
+    valid = [u for u in images if looks_like_image_url(u)]
+    if valid:
+        return random.choice(valid)
+    if images:
+        return random.choice(images)
+    return None
+
+def make_food_embed(category: str, title: str, fact: str, url: Optional[str], color: discord.Color) -> discord.Embed:
+    desc = f"Fun fact: {fact}" if fact else ""
+    embed = discord.Embed(title=title, description=desc, color=color)
+    if url:
+        embed.set_image(url=url)
+    embed.set_footer(text="Bon appétit!")
+    return embed
+
 class FoodView(discord.ui.View):
     def __init__(self, category: str):
         super().__init__(timeout=None)
@@ -195,23 +220,30 @@ class FoodView(discord.ui.View):
     @discord.ui.button(label="Another!", style=discord.ButtonStyle.primary, emoji="🍽️")
     async def another(self, interaction: discord.Interaction, button: discord.ui.Button):
         images, facts = db.get_food(self.category)
-        if not images:
-            await interaction.response.send_message("No images available for this category.", ephemeral=True)
+        if not images and not facts:
+            await interaction.response.send_message("No data available for this category.", ephemeral=True)
             return
-        url = random.choice(images)
+
+        url = choose_image_url(images)
         fact = random.choice(facts) if facts else ""
         embed = make_food_embed(self.category, f"Here’s another {self.category} 🍽️", fact, url, discord.Color.blue())
+        # Update stats only when there is at least some content shown
         db.increment_food(self.category)
         db.increment_user_food(str(interaction.user.id), self.category)
         await interaction.response.edit_message(embed=embed, view=FoodView(self.category))
 
-def make_food_embed(category: str, title: str, fact: str, url: str, color: discord.Color) -> discord.Embed:
-    desc = f"Fun fact: {fact}" if fact else ""
-    embed = discord.Embed(title=title, description=desc, color=color)
-    if url:
-        embed.set_image(url=url)
-    embed.set_footer(text="Bon appétit!")
-    return embed
+# --- Simple tracking decorator (now logs) ---
+def track_food_requests(func: Callable) -> Callable:
+    @functools.wraps(func)
+    async def wrapper(*args: Any, **kwargs: Any) -> Any:
+        try:
+            return await func(*args, **kwargs)
+        finally:
+            try:
+                logging.info(f"Tracked call to {func.__name__}")
+            except Exception:
+                pass
+    return wrapper
 
 class FoodBot(commands.Bot):
     async def setup_hook(self):
@@ -252,13 +284,15 @@ async def category_autocomplete(interaction: discord.Interaction,
 # --- Commands ---
 @bot.tree.command(name="food", description="Get a random food image and fact")
 @app_commands.autocomplete(category=category_autocomplete)
+@track_food_requests
 async def food(interaction: discord.Interaction, category: str):
     await interaction.response.defer()
     images, facts = db.get_food(category)
-    if not images:
+    if not images and not facts:
         await interaction.followup.send(f"Category '{category}' not found. Try `/food_list`")
         return
-    url = random.choice(images)
+
+    url = choose_image_url(images)
     fact = random.choice(facts) if facts else ""
     embed = make_food_embed(category, f"Here's a {category} 🍽️", fact, url, discord.Color.green())
     db.increment_food(category)
@@ -294,15 +328,69 @@ async def my_stats(interaction: discord.Interaction):
     embed = discord.Embed(title="Your Food Stats", description=desc, color=discord.Color.blue())
     await interaction.response.send_message(embed=embed)
 
-@bot.event
-async def on_ready():
-    logging.info(f"FoodBot is ready! Logged in as {bot.user}")
-    try:
-        await bot.tree.sync()  # force global sync
-        logging.info("Slash commands synced successfully.")
-    except Exception as e:
-        logging.error(f"Failed to sync commands: {e}")
+@bot.tree.command(name="remove_food", description="Remove a food category")
+async def remove_food(interaction: discord.Interaction, category: str):
+    # Restrict to admins only
+    if not isinstance(interaction.user, discord.Member) or not interaction.user.guild_permissions.administrator:
+        await interaction.response.send_message("You don’t have permission to remove foods.", ephemeral=True)
+        return
 
+    success = db.remove_food(category)
+    if success:
+        embed = discord.Embed(
+            title=f"Removed {category} ❌",
+            description=f"The category '{category}' has been deleted from the database.",
+            color=discord.Color.red()
+        )
+        await interaction.response.send_message(embed=embed)
+    else:
+        await interaction.response.send_message(f"Category '{category}' not found.", ephemeral=True)
+
+@bot.tree.command(name="update_food", description="Append new images and facts to an existing food category")
+async def update_food(interaction: discord.Interaction, category: str, image_urls: str, facts: str):
+    # Restrict to admins only
+    if not isinstance(interaction.user, discord.Member) or not interaction.user.guild_permissions.administrator:
+        await interaction.response.send_message("You don’t have permission to update foods.", ephemeral=True)
+        return
+
+    # Split comma-separated values into lists
+    new_images = [url.strip() for url in image_urls.split(",") if url.strip()]
+    new_facts = [fact.strip() for fact in facts.split(",") if fact.strip()]
+
+    if not new_images and not new_facts:
+        await interaction.response.send_message("Please provide at least one new image URL or fact.", ephemeral=True)
+        return
+
+    # Fetch existing data
+    existing_images, existing_facts = db.get_food(category)
+
+    if not existing_images and not existing_facts:
+        await interaction.response.send_message(f"Category '{category}' not found. Try `/food_list`.", ephemeral=True)
+        return
+
+    # Append new items (avoid exact duplicates)
+    updated_images = existing_images[:]
+    for img in new_images:
+        if img not in updated_images:
+            updated_images.append(img)
+
+    updated_facts = existing_facts[:]
+    for f in new_facts:
+        if f not in updated_facts:
+            updated_facts.append(f)
+
+    # Save back to DB
+    db.add_food(category, updated_images, updated_facts)
+
+    # Confirmation embed
+    embed = discord.Embed(
+        title=f"Updated {category} 🍽️",
+        description=f"**Images added:** {len([i for i in new_images if i not in existing_images])}\n"
+                    f"**Facts added:** {len([f for f in new_facts if f not in existing_facts])}\n\n"
+                    f"Now totals: {len(updated_images)} images, {len(updated_facts)} facts.",
+        color=discord.Color.gold()
+    )
+    await interaction.response.send_message(embed=embed)
 
 # --- Run bot ---
 TOKEN = os.getenv("DISCORD_TOKEN")
@@ -310,5 +398,3 @@ if TOKEN:
     bot.run(TOKEN)
 else:
     logging.error("DISCORD_TOKEN not found in environment")
-
-# python C:\Users\onehu\foodbot\foodbot.py -- use if you want to run the bot locally
