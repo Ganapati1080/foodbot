@@ -170,11 +170,36 @@ atexit.register(db.close)
 
 # --- Default data ---
 DEFAULT_FOOD = {
-    "burger": {"images": ["https://example.com/burger.jpg"], "facts": ["Burgers became popular in the U.S. in the early 1900s."]},
-    "pizza": {"images": ["https://example.com/pizza.jpg"], "facts": ["Pizza originated in Naples, Italy, as a street food."]},
-    "taco": {"images": ["https://example.com/taco.jpg"], "facts": ["Tacos date back to the 18th century in Mexico."]},
-    "sushi": {"images": ["https://example.com/sushi.jpg"], "facts": ["Sushi began as a way to preserve fish in fermented rice."]}
+    "burger": {
+        "images": [
+            "https://i.imgur.com/5ZQ0rQh.png",
+            "https://i.imgur.com/7nYwXjP.jpg",
+            "https://i.imgur.com/3kXzYwL.png"
+        ],
+        "facts": ["Burgers became popular in the U.S. in the early 1900s."]
+    },
+    "pizza": {
+        "images": [
+            "https://i.imgur.com/8kYzLhQ.png",
+            "https://i.imgur.com/2mXzYwP.jpg",
+            "https://i.imgur.com/4hT2VbQ.png"
+        ],
+        "facts": ["Pizza originated in Naples, Italy, as a street food."]
+    },
+    "taco": {
+        "images": [
+            "https://i.imgur.com/0qPuNix_d.webp?maxwidth=760&fidelity=grand",
+            "https://i.pinimg.com/736x/6c/d2/27/6cd2275d20911f429bce82ce22ba554c.jpg",
+            "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSMNh-lEEWwzf0a0qZ7kffbuMPTetRlabhMO3-cX4sEytFMOhbNcwOhLg4&s=10",
+            "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcR4tBO3Z_SUcVqYOMA-rMForY2haTsXCrrcnYZlOKukQg&s"
+        ],
+    "sushi": {
+        "https://cdn.foodfaithfitness.com/uploads/2025/02/a-crunchy_roll_sushi-feature-2.jpeg",
+        "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTdmqTi9O8hHWc21FLY7UNZYWGGrC9fS7oZVf3232nHAA&s=10",
+        "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcR6blZr2aiza7_VtZNxIw8qMyPc7WzJplEh_8q0E8uCCg&s=10"
+    }
 }
+
 if not db.list_categories():
     for cat, data in DEFAULT_FOOD.items():
         db.add_food(cat, data["images"], data["facts"])
