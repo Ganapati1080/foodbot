@@ -193,10 +193,15 @@ DEFAULT_FOOD = {
             "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSMNh-lEEWwzf0a0qZ7kffbuMPTetRlabhMO3-cX4sEytFMOhbNcwOhLg4&s=10",
             "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcR4tBO3Z_SUcVqYOMA-rMForY2haTsXCrrcnYZlOKukQg&s"
         ],
+        "facts": ["Tacos date back to the 18th century in Mexico."]
+    },
     "sushi": {
-        "https://cdn.foodfaithfitness.com/uploads/2025/02/a-crunchy_roll_sushi-feature-2.jpeg",
-        "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTdmqTi9O8hHWc21FLY7UNZYWGGrC9fS7oZVf3232nHAA&s=10",
-        "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcR6blZr2aiza7_VtZNxIw8qMyPc7WzJplEh_8q0E8uCCg&s=10"
+        "images": [
+            "https://cdn.foodfaithfitness.com/uploads/2025/02/a-crunchy_roll_sushi-feature-2.jpeg",
+            "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTdmqTi9O8hHWc21FLY7UNZYWGGrC9fS7oZVf3232nHAA&s=10",
+            "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcR6blZr2aiza7_VtZNxIw8qMyPc7WzJplEh_8q0E8uCCg&s=10"
+        ],
+        "facts": ["Sushi began as a way to preserve fish in fermented rice."]
     }
 }
 
@@ -244,18 +249,60 @@ class FoodView(discord.ui.View):
 
     @discord.ui.button(label="Another!", style=discord.ButtonStyle.primary, emoji="🍽️")
     async def another(self, interaction: discord.Interaction, button: discord.ui.Button):
-        images, facts = db.get_food(self.category)
-        if not images and not facts:
-            await interaction.response.send_message("No data available for this category.", ephemeral=True)
-            return
+        await interaction.response.defer()
+        try:
+            images, facts = db.get_food(self.category)
+            if not images and not facts:
+                await interaction.followup.send("No data available for this category.", ephemeral=True)
+                return
 
-        url = choose_image_url(images)
-        fact = random.choice(facts) if facts else ""
-        embed = make_food_embed(self.category, f"Here’s another {self.category} 🍽️", fact, url, discord.Color.blue())
-        # Update stats only when there is at least some content shown
-        db.increment_food(self.category)
-        db.increment_user_food(str(interaction.user.id), self.category)
-        await interaction.response.edit_message(embed=embed, view=FoodView(self.category))
+            # --- Rotate to next image ---
+            current_url = None
+            if interaction.message and interaction.message.embeds:
+                embed0 = interaction.message.embeds[0]
+                if embed0.image and embed0.image.url:
+                    current_url = embed0.image.url
+
+            def next_item(items: List[str], current: Optional[str]) -> Optional[str]:
+                if not items:
+                    return None
+                if current in items:
+                    idx = items.index(current)
+                    return items[(idx + 1) % len(items)]
+                return items[0]
+
+            url = next_item(images, current_url)
+
+            # --- Rotate to next fact ---
+            current_fact = None
+            if interaction.message and interaction.message.embeds:
+                desc = interaction.message.embeds[0].description or ""
+                if desc.startswith("Fun fact: "):
+                    current_fact = desc[len("Fun fact: "):]
+
+            fact = next_item(facts, current_fact) or ""
+
+            # --- Build new embed ---
+            embed = make_food_embed(
+                self.category,
+                f"Here’s another {self.category} 🍽️",
+                fact,
+                url,
+                discord.Color.blue()
+            )
+
+            # --- Update stats ---
+            db.increment_food(self.category)
+            db.increment_user_food(str(interaction.user.id), self.category)
+
+            # ✅ Edit the existing message
+            await interaction.edit_original_response(embed=embed, view=FoodView(self.category))
+
+        except Exception as e:
+            logging.exception("Error in Another! button")
+            await interaction.followup.send(f"⚠️ Something went wrong: {e}", ephemeral=True)
+
+
 
 # --- Simple tracking decorator (now logs) ---
 def track_food_requests(func: Callable) -> Callable:
@@ -272,12 +319,14 @@ def track_food_requests(func: Callable) -> Callable:
 
 class FoodBot(commands.Bot):
     async def setup_hook(self):
+        # Sync application commands
         dev_mode = os.getenv("DEV_MODE", "false").lower() == "true"
         if dev_mode:
             guild_id = os.getenv("GUILD_ID")
             if guild_id:
                 guild = discord.Object(id=int(guild_id))
                 await self.tree.sync(guild=guild)
+                logging.info(f"Synced commands for guild {guild_id}")
         else:
             priority_guild_id = os.getenv("PRIORITY_GUILD_ID")
             if priority_guild_id:
@@ -285,6 +334,13 @@ class FoodBot(commands.Bot):
                 await self.tree.sync(guild=guild)
             else:
                 await self.tree.sync()
+                logging.info("Synced global commands")
+
+        # ✅ Register persistent views for all categories
+        categories = db.list_categories()
+        for cat in categories:
+            self.add_view(FoodView(cat))
+        logging.info(f"Registered persistent views for categories: {categories}")
 
 bot = FoodBot(command_prefix="!", intents=intents)
 
