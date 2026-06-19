@@ -1,8 +1,3 @@
 discord.py==2.3.2
-<<<<<<< HEAD
-python-dotenv==1.01
-Flask==2.3.2
-=======
 python-dotenv==1.0.1
 Flask==2.3.2
->>>>>>> 98d8f53e0db81ada1e9de23818711e51c7a85cd5
