@@ -30,7 +30,7 @@ def run():
 Thread(target=run, daemon=True).start()
 # ------------------------------------
 
-load_dotenv()
+load_dotenv(override=True)
 logging.basicConfig(level=logging.INFO)
 
 # --- Database helper (thread-safe) ---
@@ -247,62 +247,38 @@ class FoodView(discord.ui.View):
         super().__init__(timeout=None)
         self.category = category
 
-    @discord.ui.button(label="Another!", style=discord.ButtonStyle.primary, emoji="🍽️")
-    async def another(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.defer()
-        try:
-            images, facts = db.get_food(self.category)
-            if not images and not facts:
-                await interaction.followup.send("No data available for this category.", ephemeral=True)
-                return
+        # Dynamically add the button with a unique custom_id
+        self.add_item(discord.ui.Button(
+            label="Another!",
+            style=discord.ButtonStyle.primary,
+            emoji="🍽️",
+            custom_id=f"food_another_button_{category}"
+        ))
 
-            # --- Rotate to next image ---
-            current_url = None
-            if interaction.message and interaction.message.embeds:
-                embed0 = interaction.message.embeds[0]
-                if embed0.image and embed0.image.url:
-                    current_url = embed0.image.url
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        return True
 
-            def next_item(items: List[str], current: Optional[str]) -> Optional[str]:
-                if not items:
-                    return None
-                if current in items:
-                    idx = items.index(current)
-                    return items[(idx + 1) % len(items)]
-                return items[0]
+    async def on_button_click(self, interaction: discord.Interaction):
+        images, facts = db.get_food(self.category)
+        if not images and not facts:
+            await interaction.response.send_message("No data available.", ephemeral=True)
+            return
 
-            url = next_item(images, current_url)
+        url = random.choice(images) if images else None
+        fact = random.choice(facts) if facts else ""
 
-            # --- Rotate to next fact ---
-            current_fact = None
-            if interaction.message and interaction.message.embeds:
-                desc = interaction.message.embeds[0].description or ""
-                if desc.startswith("Fun fact: "):
-                    current_fact = desc[len("Fun fact: "):]
+        embed = make_food_embed(
+            self.category,
+            f"Here’s another {self.category} 🍽️",
+            fact,
+            url,
+            discord.Color.blue()
+        )
 
-            fact = next_item(facts, current_fact) or ""
+        db.increment_food(self.category)
+        db.increment_user_food(str(interaction.user.id), self.category)
 
-            # --- Build new embed ---
-            embed = make_food_embed(
-                self.category,
-                f"Here’s another {self.category} 🍽️",
-                fact,
-                url,
-                discord.Color.blue()
-            )
-
-            # --- Update stats ---
-            db.increment_food(self.category)
-            db.increment_user_food(str(interaction.user.id), self.category)
-
-            # ✅ Edit the existing message
-            await interaction.edit_original_response(embed=embed, view=FoodView(self.category))
-
-        except Exception as e:
-            logging.exception("Error in Another! button")
-            await interaction.followup.send(f"⚠️ Something went wrong: {e}", ephemeral=True)
-
-
+        await interaction.response.edit_message(embed=embed, view=FoodView(self.category))
 
 # --- Simple tracking decorator (now logs) ---
 def track_food_requests(func: Callable) -> Callable:
@@ -324,7 +300,7 @@ class FoodBot(commands.Bot):
         if dev_mode:
             guild_id = os.getenv("GUILD_ID")
             if guild_id:
-                guild = discord.Object(id=int(guild_id))
+                guild = discord.Object(id=1517256549981093919)
                 await self.tree.sync(guild=guild)
                 logging.info(f"Synced commands for guild {guild_id}")
         else:
@@ -355,7 +331,7 @@ def seasonal_food() -> Optional[str]:
 
 # --- Autocomplete ---
 async def category_autocomplete(interaction: discord.Interaction,
-                                 current: str) -> List[app_commands.Choice[str]]:
+                                current: str) -> List[app_commands.Choice[str]]:
     categories = db.list_categories()
     return [
         app_commands.Choice(name=cat, value=cat)
@@ -363,22 +339,40 @@ async def category_autocomplete(interaction: discord.Interaction,
     ]
 
 # --- Commands ---
-@bot.tree.command(name="food", description="Get a random food image and fact")
+@bot.tree.command(name="food2", description="Test food command")
 @app_commands.autocomplete(category=category_autocomplete)
-@track_food_requests
-async def food(interaction: discord.Interaction, category: str):
-    await interaction.response.defer()
+async def food2(interaction: discord.Interaction, category: str):
     images, facts = db.get_food(category)
     if not images and not facts:
-        await interaction.followup.send(f"Category '{category}' not found. Try `/food_list`")
+        await interaction.response.send_message(f"Category '{category}' not found.")
+        return
+
+    url = choose_image_url(images)
+    fact = random.choice(facts) if facts else ""
+    embed = make_food_embed(category, f"Here's a {category}", fact, url, discord.Color.green())
+
+    # ✅ respond once
+    await interaction.response.send_message(embed=embed, view=FoodView(category))
+
+
+@bot.tree.command(name="food", description="Get a random food image and fact")
+@app_commands.autocomplete(category=category_autocomplete)
+async def food(interaction: discord.Interaction, category: str):
+    images, facts = db.get_food(category)
+    if not images and not facts:
+        await interaction.response.send_message(f"Category '{category}' not found. Try `/food_list`")
         return
 
     url = choose_image_url(images)
     fact = random.choice(facts) if facts else ""
     embed = make_food_embed(category, f"Here's a {category} 🍽️", fact, url, discord.Color.green())
+
     db.increment_food(category)
     db.increment_user_food(str(interaction.user.id), category)
-    await interaction.followup.send(embed=embed, view=FoodView(category))
+
+    # ✅ respond once
+    await interaction.response.send_message(embed=embed, view=FoodView(category))
+
 
 @bot.tree.command(name="food_list", description="List all food categories")
 async def food_list(interaction: discord.Interaction):
@@ -479,3 +473,5 @@ if TOKEN:
     bot.run(TOKEN)
 else:
     logging.error("DISCORD_TOKEN not found in environment")
+
+# python C:\Users\onehu\foodbot\foodbot.py
