@@ -16,20 +16,22 @@ logging.basicConfig(level=logging.INFO)
 
 class FoodView(discord.ui.View):
     def __init__(self, category: str):
-        super().__init__(timeout=None) # persistent view
+        super().__init__(timeout=None)  # persistent view
         self.category = category
+
     @discord.ui.button(label="Another!", style=discord.ButtonStyle.primary, emoji="🍽️")
     async def another(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # Serve another random image/fact from the same category
         url = random.choice(FOOD_IMAGES[self.category])
         fact = random.choice(FUN_FACTS[self.category])
         embed = discord.Embed(
-            title=f"Here's another {self.category} 🍽️",
+            title=f"Here’s another {self.category} 🍽️",
             description=f"Fun fact: {fact}",
             color=discord.Color.blue()
         )
         embed.set_image(url=url)
-        embed.set_footer(text="Bon appétit!")
-        await interaction.response.send_message(embed=embed)
+        embed.set_footer(text="Bon appétit again!")
+        await interaction.response.edit_message(embed=embed, view=FoodView(self.category))
 
 class FoodBot(commands.Bot):
     async def setup_hook(self):
@@ -122,17 +124,18 @@ async def food(interaction: discord.Interaction, item: app_commands.Choice[str])
         url = random.choice(FOOD_IMAGES[item.value])
         fact = random.choice(FUN_FACTS[item.value])
         embed = discord.Embed(
-            title=f"Here’s a {item.name} for you 🍽️",
+            title=f"Here's a {item.name} for you 🍽️",
             description=f"Fun fact: {fact}",
             color=discord.Color.green()
         )
         embed.set_image(url=url)
         embed.set_footer(text="Bon appétit!")
-        await interaction.response.send_message(embed=embed)
+        await interaction.response.send_message(embed=embed, view=FoodView(item.value))
     except Exception as e:
         await interaction.response.send_message(
             f"⚠️ Something went wrong serving {item.name}. Error: {e}"
         )
+
 
 # /randomfood command
 @bot.tree.command(name="randomfood", description="Sends a random food image and fun fact")
