@@ -305,4 +305,8 @@ if TOKEN:
 else:
     logging.error("DISCORD_TOKEN not found in environment")
 
+<<<<<<< HEAD
 # python C:\Users\onehu\foodbot\foodbot.py -- use if you want to run the bot locally
+=======
+# python C:\Users\onehu\foodbot\foodbot.py -- use if you want to run the bot locally
+>>>>>>> 151196eafc34f3876c2c6b021515d89f281688bb
