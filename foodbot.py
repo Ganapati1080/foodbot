@@ -297,6 +297,12 @@ async def my_stats(interaction: discord.Interaction):
 @bot.event
 async def on_ready():
     logging.info(f"FoodBot is ready! Logged in as {bot.user}")
+    try:
+        await bot.tree.sync()  # force global sync
+        logging.info("Slash commands synced successfully.")
+    except Exception as e:
+        logging.error(f"Failed to sync commands: {e}")
+
 
 # --- Run bot ---
 TOKEN = os.getenv("DISCORD_TOKEN")
