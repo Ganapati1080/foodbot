@@ -45,16 +45,26 @@ FOOD_IMAGES = {
     ],
     "pizza": [
         "https://cdn.discordapp.com/attachments/1517278740290212031/1517294247022166156/2Q.png",
+        "https://cdn.discordapp.com/attachments/1517278740290212031/1517319668988252342/2Q.png",
+        "https://cdn.discordapp.com/attachments/1517278740290212031/1517319782519799969/9k.png",
+        "https://cdn.discordapp.com/attachments/1517278740290212031/1517319890548162570/images.png"
     ],
     "taco": [
         "https://cdn.discordapp.com/attachments/1517278740290212031/1517294129770659981/9k.png",
+        "https://cdn.discordapp.com/attachments/1517278740290212031/1517319353887096882/images.png",
+        "https://cdn.discordapp.com/attachments/1517278740290212031/1517319514730008626/images.png",
+        "https://cdn.discordapp.com/attachments/1517278740290212031/1517319216649343048/2Q.png"
     ],
     "sushi": [
-        "https://cdn.discordapp.com/attachments/1517278740290212031/1517314398027513907/Z.png"
+        "https://cdn.discordapp.com/attachments/1517278740290212031/1517314398027513907/Z.png",
+        "https://cdn.discordapp.com/attachments/1517278740290212031/1517318518851375195/images.png",
+        "https://cdn.discordapp.com/attachments/1517278740290212031/1517318628213526700/images.png",
+        "https://cdn.discordapp.com/attachments/1517278740290212031/1517318807910355014/images.png"
+        
     ]
 }
 
-FUN_FACTS = {
+FUN_FACTS = {\
     "burger": [
         "Burgers became popular in the U.S. in the early 1900s.",
         "The world’s largest burger weighed over 2,000 pounds!",
