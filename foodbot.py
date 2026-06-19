@@ -11,11 +11,11 @@ from dotenv import load_dotenv
 conn = sqlite3.connect("foodbot.db")
 cursor = conn.cursor()
 
-cursor.execute("""CREATE TABLE IF NOT EXISTS food_statS
+cursor.execute("""CREATE TABLE IF NOT EXISTS food_stats
                 (category TEXT PRIMARY KEY,
                 count INTEGER DEFAULT 0)
                 """)
-conn.commit
+conn.commit()
 
 load_dotenv()
 
@@ -152,10 +152,16 @@ async def food(interaction: discord.Interaction, item: app_commands.Choice[str])
         embed.set_image(url=url)
         embed.set_footer(text="Bon appétit!")
         await interaction.response.send_message(embed=embed, view=FoodView(item.value))
+
+        # Track request
+        increment_food(item.value)
+        conn.commit()
+
     except Exception as e:
         await interaction.response.send_message(
             f"⚠️ Something went wrong serving {item.name}. Error: {e}"
         )
+
 
 @bot.tree.command(name="topfoods", description="Shows the top 3 most requested foods")
 async def topfoods(interaction: discord.Interaction):
