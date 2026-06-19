@@ -119,6 +119,15 @@ class DB:
             cur.execute("UPDATE food_stats SET count = count + 1 WHERE category = ?", (category,))
             self.conn.commit()
 
+    def remove_food(self, category: str) -> bool:
+        with self.lock:
+            cur = self.conn.cursor()
+            cur.execute("DELETE FROM food_data WHERE category = ?", (category,))
+            cur.execute("DELETE FROM food_stats WHERE category = ?", (category,))
+            cur.execute("DELETE FROM user_food_stats WHERE category = ?", (category,))
+            self.conn.commit()
+            return cur.rowcount > 0
+
     def increment_user_food(self, user_id: str, category: str):
         with self.lock:
             cur = self.conn.cursor()
@@ -412,6 +421,23 @@ async def addfood(interaction: discord.Interaction, category: str, images: str, 
     except Exception as e:
         logging.exception("Error in /addfood")
         await interaction.response.send_message(f"⚠️ Error adding/updating category: {e}", ephemeral=True)
+
+# Admin command to remove a food category
+@bot.tree.command(name="removefood", description="Remove a food category (admin only)")
+@app_commands.describe(category="The category name to remove")
+async def removefood(interaction: discord.Interaction, category: str):
+    if not isinstance(interaction.user, discord.Member) or not interaction.user.guild_permissions.manage_guild:
+        await interaction.response.send_message("You need Manage Guild permission to use this command.", ephemeral=True)
+        return
+    try:
+        removed = db.remove_food(category.lower())
+        if removed:
+            await interaction.response.send_message(f"✅ Category '{category}' has been removed.")
+        else:
+            await interaction.response.send_message(f"⚠️ Category '{category}' was not found.", ephemeral=True)
+    except Exception as e:
+        logging.exception("Error in /removefood")
+        await interaction.response.send_message(f"⚠️ Error removing category: {e}", ephemeral=True)
 
 # --- Run the bot ---
 token = os.getenv("DISCORD_TOKEN")
