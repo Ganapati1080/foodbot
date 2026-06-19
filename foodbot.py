@@ -1,3 +1,4 @@
+from cmath import e
 import discord
 import os
 import random
@@ -156,7 +157,22 @@ async def food(interaction: discord.Interaction, item: app_commands.Choice[str])
             f"⚠️ Something went wrong serving {item.name}. Error: {e}"
         )
 
+@bot.tree.command(name="topfoods", description="Shows the top 3 most requested foods")
+async def topfoods(interaction: discord.Interaction):
+    cursor.execute("SELECT category, count FROM food_stats ORDER BY count DESC LIMIT 3")
+    results = cursor.fetchall()
 
+    if results:
+        description = "\n".join([f"🍴 {cat}: {cnt} requests" for cat, cnt in results])
+        embed = discord.Embed(
+            title="Top 3 Most Requested Foods",
+            description=description,
+            color=discord.Color.gold(),
+        )
+        await interaction.response.send_message(embed=embed)
+    else:
+        await interaction.response.send_message("No food requests yet!")
+ 
 # /randomfood command
 @bot.tree.command(
     name="randomfood", description="Sends a random food image and fun fact"
@@ -204,5 +220,6 @@ token = os.getenv("DISCORD_TOKEN")
 if not token:
     raise RuntimeError("DISCORD_TOKEN environment variable not set")
 bot.run(token)
+conn.close()
 
 # python C:\Users\onehu\foodbot\foodbot.py -- use if you want to run the bot locally
